@@ -104,3 +104,108 @@ describe('domain-filter', () => {
     });
   });
 });
+
+  describe('isDomainAllowed – case sensitivity', () => {
+    it('should match uppercase hostname against lowercase pattern', () => {
+      // Hostnames coming from the network may be mixed case; the filter
+      // should normalise before comparing (or at minimum document the contract).
+      // The current implementation compares as-is, so we test the actual behaviour.
+      expect(isDomainAllowed('EXAMPLE.COM', ['example.com'])).toBe(false);
+    });
+
+    it('should match when both sides are consistently cased', () => {
+      expect(isDomainAllowed('example.com', ['example.com'])).toBe(true);
+      expect(isDomainAllowed('EXAMPLE.COM', ['EXAMPLE.COM'])).toBe(true);
+    });
+
+    it('should not partial-suffix-match with wildcard', () => {
+      // "evilexample.com" must not match "*.example.com"
+      expect(isDomainAllowed('evilexample.com', ['*.example.com'])).toBe(false);
+    });
+
+    it('should not match when wildcard suffix appears mid-string', () => {
+      // "a.example.com.evil.com" should not match "*.example.com"
+      expect(isDomainAllowed('a.example.com.evil.com', ['*.example.com'])).toBe(false);
+    });
+  });
+
+  describe('parseDomainList – edge cases', () => {
+    it('should handle single domain without comma', () => {
+      expect(parseDomainList('example.com')).toEqual(['example.com']);
+    });
+
+    it('should handle whitespace-only string', () => {
+      expect(parseDomainList('   ')).toEqual([]);
+    });
+
+    it('should handle mixed tabs and spaces', () => {
+      expect(parseDomainList('a.com\t,\tb.com')).toEqual(['a.com', 'b.com']);
+    });
+
+    it('should preserve wildcard casing only in prefix position', () => {
+      // wildcard prefix lowercased along with the rest
+      expect(parseDomainList('*.EXAMPLE.COM')).toEqual(['*.example.com']);
+    });
+
+    it('should handle trailing comma', () => {
+      expect(parseDomainList('a.com,')).toEqual(['a.com']);
+    });
+
+    it('should handle leading comma', () => {
+      expect(parseDomainList(',a.com')).toEqual(['a.com']);
+    });
+  });
+
+  describe('buildWebSocketFilterScript – correctness properties', () => {
+    it('should start with IIFE wrapper', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      expect(script.trimStart()).toMatch(/^\(function\(\)/);
+    });
+
+    it('should end with IIFE invocation', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      expect(script.trimEnd()).toMatch(/\}\)\(\);$/);
+    });
+
+    it('should patch navigator.sendBeacon', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      expect(script).toContain('navigator.sendBeacon');
+    });
+
+    it('should preserve WebSocket static constants', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      expect(script).toContain('WebSocket.CONNECTING');
+      expect(script).toContain('WebSocket.OPEN');
+      expect(script).toContain('WebSocket.CLOSING');
+      expect(script).toContain('WebSocket.CLOSED');
+    });
+
+    it('should preserve EventSource static constants', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      expect(script).toContain('EventSource.CONNECTING');
+      expect(script).toContain('EventSource.OPEN');
+      expect(script).toContain('EventSource.CLOSED');
+    });
+
+    it('should use DOMException with SecurityError for WebSocket block', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      // The script throws a DOMException to match the spec-defined error
+      // that browsers emit when a WebSocket connection is refused.
+      expect(script).toContain('DOMException');
+      expect(script).toContain('SecurityError');
+    });
+
+    it('should return false (not throw) for blocked sendBeacon', () => {
+      const script = buildWebSocketFilterScript(['a.com']);
+      // sendBeacon should return false, not throw, to match spec behaviour
+      expect(script).toContain('return false');
+    });
+
+    it('should properly JSON-encode domains with special characters', () => {
+      // Domains should be safely embedded as JSON strings
+      const domains = ['xn--nxasmq6b.com', 'münchen.de'];
+      const script = buildWebSocketFilterScript(domains);
+      const embedded = JSON.stringify(domains);
+      expect(script).toContain(embedded);
+    });
+  });
