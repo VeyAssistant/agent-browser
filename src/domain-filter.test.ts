@@ -107,15 +107,15 @@ describe('domain-filter', () => {
 
   describe('isDomainAllowed – case sensitivity', () => {
     it('should match uppercase hostname against lowercase pattern', () => {
-      // Hostnames coming from the network may be mixed case; the filter
-      // should normalise before comparing (or at minimum document the contract).
-      // The current implementation compares as-is, so we test the actual behaviour.
-      expect(isDomainAllowed('EXAMPLE.COM', ['example.com'])).toBe(false);
+      // isDomainAllowed normalises the hostname to lowercase before comparing,
+      // mirroring the in-browser WebSocket filter script behaviour.
+      expect(isDomainAllowed('EXAMPLE.COM', ['example.com'])).toBe(true);
+      expect(isDomainAllowed('Example.Com', ['example.com'])).toBe(true);
     });
 
     it('should match when both sides are consistently cased', () => {
       expect(isDomainAllowed('example.com', ['example.com'])).toBe(true);
-      expect(isDomainAllowed('EXAMPLE.COM', ['EXAMPLE.COM'])).toBe(true);
+      expect(isDomainAllowed('EXAMPLE.COM', ['example.com'])).toBe(true);
     });
 
     it('should not partial-suffix-match with wildcard', () => {
